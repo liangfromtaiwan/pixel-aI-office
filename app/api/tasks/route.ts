@@ -96,16 +96,37 @@ function firstNonEmpty(row: Record<string, string>, keys: string[]): string {
   return "";
 }
 
+/** When gviz has no header labels, columns become col1/col2 or A→a; use first filled cell as title. */
+function firstNonEmptyCellInRow(row: Record<string, string>): string {
+  for (const v of Object.values(row)) {
+    const t = v.trim();
+    if (t) return t;
+  }
+  return "";
+}
+
 function mapSheetRowToTask(row: Record<string, string>, index: number): DashboardTask | null {
-  const title = firstNonEmpty(row, [
+  let title = firstNonEmpty(row, [
     "title",
     "task",
     "taskname",
+    "tasktitle",
+    "task_title",
     "name",
     "標題",
     "任務",
     "任務名稱",
+    "任務標題",
+    "工作項目",
+    "工作內容",
+    "項目",
+    "項目名稱",
+    "主題",
+    "名稱",
+    "col1",
+    "a",
   ]);
+  if (!title) title = firstNonEmptyCellInRow(row);
   if (!title) return null;
 
   const description =
