@@ -105,6 +105,40 @@ function firstNonEmptyCellInRow(row: Record<string, string>): string {
   return "";
 }
 
+const HEADER_TOKENS = new Set(
+  [
+    "externaltaskid",
+    "aitoolname",
+    "currentstage",
+    "status",
+    "progress",
+    "description",
+    "title",
+    "log",
+    "estimatedcompletion",
+    "taskid",
+  ].map((s) => s.toLowerCase()),
+);
+
+function looksLikeTechnicalIdOrHeaderToken(value: string): boolean {
+  const v = value.trim();
+  if (!v) return true;
+  const compact = v.toLowerCase().replace(/[\s_\-]+/g, "");
+  if (HEADER_TOKENS.has(compact)) return true;
+  if (/^(cursor|claude|chatgpt|sheet)_task_\d+$/i.test(v)) return true;
+  if (/^sheet_task_\d{3}$/i.test(v)) return true;
+  return false;
+}
+
+/** Prefer first human-looking cell; skip id columns and pasted header names. */
+function firstPresentableTitleCell(row: Record<string, string>): string {
+  for (const v of Object.values(row)) {
+    const t = v.trim();
+    if (t && !looksLikeTechnicalIdOrHeaderToken(t)) return t;
+  }
+  return "";
+}
+
 function mapSheetRowToTask(row: Record<string, string>, index: number): DashboardTask | null {
   let title = firstNonEmpty(row, [
     "title",
@@ -126,6 +160,7 @@ function mapSheetRowToTask(row: Record<string, string>, index: number): Dashboar
     "col1",
     "a",
   ]);
+  if (!title) title = firstPresentableTitleCell(row);
   if (!title) title = firstNonEmptyCellInRow(row);
   if (!title) return null;
 
@@ -148,8 +183,10 @@ function mapSheetRowToTask(row: Record<string, string>, index: number): Dashboar
   const log = firstNonEmpty(row, ["log", "note", "notes", "備註", "日誌"]) || "Synced from Google Sheet";
   const now = nowIso();
 
+  const id = externalTaskId.startsWith("sheet_") ? externalTaskId : `sheet_${externalTaskId}`;
+
   return {
-    id: `sheet_${externalTaskId}`,
+    id,
     externalTaskId,
     aiToolName: tool,
     title,
