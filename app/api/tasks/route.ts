@@ -96,15 +96,6 @@ function firstNonEmpty(row: Record<string, string>, keys: string[]): string {
   return "";
 }
 
-/** When gviz has no header labels, columns become col1/col2 or A→a; use first filled cell as title. */
-function firstNonEmptyCellInRow(row: Record<string, string>): string {
-  for (const v of Object.values(row)) {
-    const t = v.trim();
-    if (t) return t;
-  }
-  return "";
-}
-
 const HEADER_TOKENS = new Set(
   [
     "externaltaskid",
@@ -130,11 +121,54 @@ function looksLikeTechnicalIdOrHeaderToken(value: string): boolean {
   return false;
 }
 
+/** Cell is literally a column label (row 2 copy-paste of headers) — not a real task title. */
+const BAD_TITLE_CELL_VALUES = new Set([
+  "title",
+  "標題",
+  "task",
+  "任務",
+  "taskname",
+  "name",
+  "description",
+  "描述",
+  "說明",
+  "內容",
+  "status",
+  "狀態",
+  "progress",
+  "進度",
+  "externaltaskid",
+  "aitoolname",
+  "currentstage",
+  "log",
+  "備註",
+  "estimatedcompletion",
+  "預計完成",
+]);
+
+function isUnusableTitleCandidate(value: string): boolean {
+  const t = value.trim();
+  if (!t) return true;
+  if (looksLikeTechnicalIdOrHeaderToken(t)) return true;
+  if (BAD_TITLE_CELL_VALUES.has(t)) return true;
+  if (BAD_TITLE_CELL_VALUES.has(t.toLowerCase())) return true;
+  return false;
+}
+
 /** Prefer first human-looking cell; skip id columns and pasted header names. */
 function firstPresentableTitleCell(row: Record<string, string>): string {
   for (const v of Object.values(row)) {
     const t = v.trim();
-    if (t && !looksLikeTechnicalIdOrHeaderToken(t)) return t;
+    if (t && !isUnusableTitleCandidate(t)) return t;
+  }
+  return "";
+}
+
+/** Last-resort title: first non-empty cell that is not a header echo / id. */
+function firstNonEmptyCellInRow(row: Record<string, string>): string {
+  for (const v of Object.values(row)) {
+    const t = v.trim();
+    if (t && !isUnusableTitleCandidate(t)) return t;
   }
   return "";
 }
@@ -160,6 +194,7 @@ function mapSheetRowToTask(row: Record<string, string>, index: number): Dashboar
     "col1",
     "a",
   ]);
+  if (isUnusableTitleCandidate(title)) title = "";
   if (!title) title = firstPresentableTitleCell(row);
   if (!title) title = firstNonEmptyCellInRow(row);
   if (!title) return null;
