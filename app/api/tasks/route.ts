@@ -14,11 +14,21 @@ function normalizeStatus(value: string): TaskStatus {
   if (v === "inprogress" || v === "working") return "in_progress";
   if (v === "done" || v === "complete") return "completed";
   if (v === "stuck") return "blocked";
+  const raw = value.trim();
+  if (raw === "未開始" || raw === "待開始" || raw === "待辦") return "not_started";
+  if (raw === "進行中" || raw === "處理中" || raw === "執行中") return "in_progress";
+  if (raw === "已完成" || raw === "完成") return "completed";
+  if (raw === "阻塞" || raw === "卡關" || raw === "暫停") return "blocked";
   return "not_started";
 }
 
+/** Keep letters/numbers from any script (e.g. 中文表頭); do not strip to empty. */
 function normalizeHeader(value: string): string {
-  return value.trim().toLowerCase().replace(/[^a-z0-9]+/g, "");
+  return value
+    .trim()
+    .toLowerCase()
+    .normalize("NFKC")
+    .replace(/[\s_\-]+/g, "");
 }
 
 function parseSheetCell(raw: unknown): string {
@@ -87,21 +97,34 @@ function firstNonEmpty(row: Record<string, string>, keys: string[]): string {
 }
 
 function mapSheetRowToTask(row: Record<string, string>, index: number): DashboardTask | null {
-  const title = firstNonEmpty(row, ["title", "task", "taskname", "name"]);
+  const title = firstNonEmpty(row, [
+    "title",
+    "task",
+    "taskname",
+    "name",
+    "標題",
+    "任務",
+    "任務名稱",
+  ]);
   if (!title) return null;
 
-  const description = firstNonEmpty(row, ["description", "desc", "summary"]) || "No description";
-  const tool = firstNonEmpty(row, ["aitoolname", "tool", "agent", "source"]) || "Unknown";
-  const stage = firstNonEmpty(row, ["currentstage", "stage", "step"]) || "Pending";
-  const statusRaw = firstNonEmpty(row, ["status", "state"]) || "not_started";
+  const description =
+    firstNonEmpty(row, ["description", "desc", "summary", "描述", "說明", "內容"]) || "No description";
+  const tool =
+    firstNonEmpty(row, ["aitoolname", "aitool", "tool", "agent", "source", "工具", "ai", "模型"]) ||
+    "Unknown";
+  const stage = firstNonEmpty(row, ["currentstage", "stage", "step", "階段", "目前階段", "狀態說明"]) || "Pending";
+  const statusRaw = firstNonEmpty(row, ["status", "state", "狀態"]) || "not_started";
   const status = normalizeStatus(statusRaw);
-  const progressRaw = firstNonEmpty(row, ["progress", "percent", "percentage"]);
+  const progressRaw = firstNonEmpty(row, ["progress", "percent", "percentage", "進度"]);
   const progress = Number.isFinite(Number(progressRaw)) ? Number(progressRaw) : 0;
   const normalized = normalizeStatusProgress(status, progress);
   const externalTaskId =
-    firstNonEmpty(row, ["externaltaskid", "id", "taskid"]) || `sheet_task_${String(index + 1).padStart(3, "0")}`;
-  const estimated = firstNonEmpty(row, ["estimatedcompletion", "eta", "duedate"]) || "TBD";
-  const log = firstNonEmpty(row, ["log", "note", "notes"]) || "Synced from Google Sheet";
+    firstNonEmpty(row, ["externaltaskid", "id", "taskid", "外部id", "任務id"]) ||
+    `sheet_task_${String(index + 1).padStart(3, "0")}`;
+  const estimated =
+    firstNonEmpty(row, ["estimatedcompletion", "eta", "duedate", "預計完成", "截止"]) || "TBD";
+  const log = firstNonEmpty(row, ["log", "note", "notes", "備註", "日誌"]) || "Synced from Google Sheet";
   const now = nowIso();
 
   return {
@@ -122,31 +145,86 @@ function mapSheetRowToTask(row: Record<string, string>, index: number): Dashboar
   };
 }
 
-async function getSheetTasks(): Promise<DashboardTask[] | null> {
+export type SheetSyncDiag = {
+  sheetEnvOk: boolean;
+  builtGvizUrl: boolean;
+  fetchStatus: number | null;
+  responseLooksLikeGviz: boolean;
+  dataRows: number;
+  mappedTaskCount: number;
+  reason: string;
+};
+
+async function trySheetImport(): Promise<{ tasks: DashboardTask[] | null; diag: SheetSyncDiag }> {
+  const diag: SheetSyncDiag = {
+    sheetEnvOk: Boolean(
+      process.env.GOOGLE_SHEET_JSON_URL?.trim() ||
+        process.env.GOOGLE_SHEET_URL?.trim() ||
+        process.env.GOOGLE_SHEET_ID?.trim(),
+    ),
+    builtGvizUrl: false,
+    fetchStatus: null,
+    responseLooksLikeGviz: false,
+    dataRows: 0,
+    mappedTaskCount: 0,
+    reason: "idle",
+  };
+
   const url = buildSheetJsonUrl();
-  if (!url) return null;
+  if (!url) {
+    diag.reason = diag.sheetEnvOk ? "env_present_but_invalid_url_or_id" : "missing_GOOGLE_SHEET_URL_or_GOOGLE_SHEET_ID";
+    return { tasks: null, diag };
+  }
+  diag.builtGvizUrl = true;
 
   try {
     const res = await fetch(url, { cache: "no-store" });
-    if (!res.ok) return null;
+    diag.fetchStatus = res.status;
+    if (!res.ok) {
+      diag.reason = `gviz_http_${res.status}`;
+      return { tasks: null, diag };
+    }
     const text = await res.text();
+    diag.responseLooksLikeGviz = text.includes("setResponse");
+    if (!diag.responseLooksLikeGviz) {
+      diag.reason =
+        "gviz_body_missing_setResponse_share_sheet_to_anyone_with_link_as_viewer_or_publish";
+      return { tasks: null, diag };
+    }
     const rows = parseGvizPayload(text);
+    diag.dataRows = rows.length;
     const tasks = rows
       .map((row, idx) => mapSheetRowToTask(row, idx))
       .filter((t): t is DashboardTask => Boolean(t));
-    if (tasks.length === 0) return null;
-    return tasks;
+    diag.mappedTaskCount = tasks.length;
+    if (tasks.length === 0) {
+      diag.reason =
+        rows.length === 0
+          ? "parsed_zero_rows_check_first_row_headers_and_gid"
+          : "rows_found_but_no_title_column_match_en_or_zh_標題";
+      return { tasks: null, diag };
+    }
+    diag.reason = "sheet_ok";
+    return { tasks, diag };
   } catch {
-    return null;
+    diag.reason = "fetch_threw";
+    return { tasks: null, diag };
   }
 }
 
-export async function GET() {
-  const sheetTasks = await getSheetTasks();
+export async function GET(request: Request) {
+  const debug = new URL(request.url).searchParams.get("debug") === "1";
+  const { tasks: sheetTasks, diag } = await trySheetImport();
+
   if (sheetTasks) {
-    return NextResponse.json({ tasks: sheetTasks, source: "google_sheet" });
+    const body: Record<string, unknown> = { tasks: sheetTasks, source: "google_sheet" };
+    if (debug) body.sheetSync = diag;
+    return NextResponse.json(body);
   }
-  return NextResponse.json({ tasks: getAllTasks(), source: "memory_store" });
+
+  const body: Record<string, unknown> = { tasks: getAllTasks(), source: "memory_store" };
+  if (debug) body.sheetSync = diag;
+  return NextResponse.json(body);
 }
 
 export async function POST(request: Request) {

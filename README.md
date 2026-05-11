@@ -31,7 +31,9 @@ GOOGLE_SHEET_GID=0
 # GOOGLE_SHEET_GID=0
 ```
 
-Expected headers (flexible aliases supported): `title`, `description`, `aiToolName`, `status`, `progress`, `currentStage`, `externalTaskId`, `estimatedCompletion`, `log`.
+Expected headers (flexible aliases supported): `title`, `description`, `aiToolName`, `status`, `progress`, `currentStage`, `externalTaskId`, `estimatedCompletion`, `log`. Chinese column names like `標題`, `描述`, `狀態`, `進度` are also recognized.
+
+After deploy, open `GET /api/tasks?debug=1` to see `sheetSync` diagnostics (why `source` is `memory_store` vs `google_sheet`) without exposing your env values.
 
 Run desktop companion (Electron + Next):
 
