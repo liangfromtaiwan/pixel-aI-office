@@ -144,7 +144,31 @@ const BAD_TITLE_CELL_VALUES = new Set([
   "備註",
   "estimatedcompletion",
   "預計完成",
+  "id",
 ]);
+
+/** Entire row is the header labels again (gviz sometimes includes row 1 as data). */
+const REPEATED_HEADER_ROW_VALUES = new Set([
+  ...BAD_TITLE_CELL_VALUES,
+  "工具",
+  "描述",
+  "狀態",
+  "目前階段",
+  "備註",
+  "taskid",
+  "任務id",
+  "外部id",
+]);
+
+function rowLooksLikeRepeatedHeaderRow(row: Record<string, string>): boolean {
+  const vals = Object.values(row)
+    .map((v) => v.trim())
+    .filter(Boolean);
+  if (vals.length < 2) return false;
+  return vals.every(
+    (v) => REPEATED_HEADER_ROW_VALUES.has(v) || REPEATED_HEADER_ROW_VALUES.has(v.toLowerCase()),
+  );
+}
 
 function isUnusableTitleCandidate(value: string): boolean {
   const t = value.trim();
@@ -174,6 +198,8 @@ function firstNonEmptyCellInRow(row: Record<string, string>): string {
 }
 
 function mapSheetRowToTask(row: Record<string, string>, index: number): DashboardTask | null {
+  if (rowLooksLikeRepeatedHeaderRow(row)) return null;
+
   let title = firstNonEmpty(row, [
     "title",
     "task",
