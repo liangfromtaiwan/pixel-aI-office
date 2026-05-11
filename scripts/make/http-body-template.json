@@ -1,0 +1,11 @@
+{
+  "externalTaskId": "{{externalTaskId}}",
+  "aiToolName": "{{aiToolName}}",
+  "title": "{{title}}",
+  "description": "{{description}}",
+  "status": "{{status}}",
+  "progress": {{progress}},
+  "currentStage": "{{currentStage}}",
+  "log": "{{log}}"
+}
+

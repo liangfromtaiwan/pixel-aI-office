@@ -1,24 +1,83 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+This project includes:
+
+- Web-based AI office simulation (`app/page.tsx`)
+- macOS floating AI companion via Electron (`app/pet/page.tsx` + `electron/*`)
+- API adapter endpoint for companion state: `GET /api/agent-state`
 
 ## Getting Started
 
-First, run the development server:
+Run web app:
 
 ```bash
 npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
 ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+Run desktop companion (Electron + Next):
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+```bash
+npm run dev:desktop
+```
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+## Agent state (`GET /api/agent-state`)
+
+The desktop companion polls this route every ~2.6s.
+
+### Priority order
+
+1. **Fixed real task** (env JSON, JSON file, or per-field env) — use this for your own task text
+2. **Remote API** (`AGENT_API_URL`)
+3. **ChatGPT** (`OPENAI_API_KEY`) — generates a snapshot when nothing else is available
+4. **Mock** — last resort
+
+### Option A — fixed task in `.env.local` (inline JSON)
+
+```bash
+AGENT_TASK_JSON={"status":"working","currentTask":"修復登入流程","progress":40,"lastCompletedTask":"完成文案初稿"}
+```
+
+- `currentTask` (or `task`) is required
+- `status` optional — defaults to `working`
+- `progress` optional — defaults to `0`
+- `lastCompletedTask` optional — defaults to `—`
+
+### Option B — fixed task JSON file
+
+Copy `data/agent-state.example.json` to `data/agent-state.json` and edit it (gitignored).
+
+```bash
+AGENT_TASK_FILE=data/agent-state.json
+```
+
+### Option C — one line per field
+
+```bash
+AGENT_CURRENT_TASK=修復登入流程
+AGENT_STATUS=working
+AGENT_PROGRESS=40
+AGENT_LAST_COMPLETED_TASK=完成文案初稿
+```
+
+`AGENT_STATUS` optional — defaults to `working`.
+
+### Optional: ChatGPT + remote API
+
+```bash
+OPENAI_API_KEY=your_openai_api_key
+OPENAI_MODEL=gpt-4o-mini
+AGENT_API_URL=https://your-agent-api.example.com/status
+AGENT_API_TOKEN=your_optional_bearer_token
+```
+
+### Remote API payload (flexible adapter)
+
+- `status`: `idle | thinking | working | blocked | done`
+- `currentTask` (or `task`)
+- `progress` (0-100)
+- `lastCompletedTask` (or `last_completed_task`)
+
+If every source fails, the route falls back to mock simulation.
+
+**Tip:** When `AGENT_TASK_JSON` or `AGENT_TASK_FILE` is set, your companion always shows **your** strings — ChatGPT is not used for text unless fixed sources are removed.
 
 ## Learn More
 

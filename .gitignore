@@ -39,3 +39,6 @@ yarn-error.log*
 # typescript
 *.tsbuildinfo
 next-env.d.ts
+
+# Local fixed agent state (optional — copy from data/agent-state.example.json)
+/data/agent-state.json
