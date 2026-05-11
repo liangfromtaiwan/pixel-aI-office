@@ -34,6 +34,53 @@ Other ways to stay “real” without `AI_TASKS_URL`:
 - **`POST /api/tasks/update`** — call from automation when an AI step starts/finishes (same JSON shape as Make).
 - **Make / n8n** — read tool webhooks or APIs, then POST to your deployed `/api/tasks/update` or refresh a Sheet this app reads.
 
+#### Cursor + Claude + ChatGPT (multi-agent)
+
+Use **one stable `externalTaskId` per logical task** (same id for the whole lifecycle). Set **`aiToolName`** to `Cursor`, `Claude`, or `ChatGPT` so the dashboard groups visually.
+
+**Webhook / Make:** one HTTP module per event, or one scenario with a Router on `aiToolName`. Example bodies:
+
+```json
+{
+  "externalTaskId": "cursor_task_001",
+  "aiToolName": "Cursor",
+  "title": "Fix auth redirect",
+  "description": "Next.js middleware",
+  "status": "in_progress",
+  "progress": 40,
+  "currentStage": "Implementing guard",
+  "log": "cursor: pushed progress"
+}
+```
+
+```json
+{
+  "externalTaskId": "claude_task_001",
+  "aiToolName": "Claude",
+  "title": "Landing page copy",
+  "description": "First draft",
+  "status": "in_progress",
+  "progress": 65,
+  "currentStage": "Writing first draft",
+  "log": "claude: section headlines"
+}
+```
+
+```json
+{
+  "externalTaskId": "chatgpt_task_001",
+  "aiToolName": "ChatGPT",
+  "title": "Interview prep bullets",
+  "description": "5 themes",
+  "status": "not_started",
+  "progress": 0,
+  "currentStage": "Queued",
+  "log": "chatgpt: reserved for later"
+}
+```
+
+**`AI_TASKS_URL`:** your bridge returns `{ "tasks": [ ... ] }` merging all three tools from whatever APIs or files you read. Adding ChatGPT later is just more objects in that array (no app code change).
+
 ### Optional: use Google Sheet as dashboard task source
 
 `GET /api/tasks` can read tasks directly from Google Sheet when no `AI_TASKS_URL` result is returned, then fall back to in-memory mock/webhook store.
