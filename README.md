@@ -12,9 +12,31 @@ Run web app:
 npm run dev
 ```
 
+### Real AI sync (dashboard `GET /api/tasks`)
+
+Priority (first match wins):
+
+1. **`AI_TASKS_URL`** — your own HTTPS JSON endpoint that aggregates real AI / agent state (see below). Response must be `{ "tasks": [ ... ] }` or a raw array.
+2. **Google Sheet** — when `GOOGLE_SHEET_*` is set and readable.
+3. **In-memory store** — seed data plus anything pushed via `POST /api/tasks/update` (Make, scripts, Cursor hooks, etc.).
+
+```bash
+# Optional: bridge service you host (Node on Railway, Cloudflare Worker, etc.)
+AI_TASKS_URL=https://your-api.example.com/v1/dashboard-tasks
+# Optional bearer token
+# AI_TASKS_TOKEN=...
+```
+
+Each task object should include at least **`externalTaskId`** and **`title`**; optional: `description`, `aiToolName`, `status` (`not_started` | `in_progress` | `completed` | `blocked`), `progress`, `currentStage`, `estimatedCompletion`, `log`. Aliases like `currentTask`, `external_task_id` are accepted.
+
+Other ways to stay “real” without `AI_TASKS_URL`:
+
+- **`POST /api/tasks/update`** — call from automation when an AI step starts/finishes (same JSON shape as Make).
+- **Make / n8n** — read tool webhooks or APIs, then POST to your deployed `/api/tasks/update` or refresh a Sheet this app reads.
+
 ### Optional: use Google Sheet as dashboard task source
 
-`GET /api/tasks` can read tasks directly from Google Sheet (when configured), then fall back to in-memory mock/webhook store.
+`GET /api/tasks` can read tasks directly from Google Sheet when no `AI_TASKS_URL` result is returned, then fall back to in-memory mock/webhook store.
 
 Set one of the following in `.env.local`:
 
@@ -33,7 +55,7 @@ GOOGLE_SHEET_GID=0
 
 Expected headers (flexible aliases supported): `title`, `description`, `aiToolName`, `status`, `progress`, `currentStage`, `externalTaskId`, `estimatedCompletion`, `log`. Chinese column names like `標題`, `描述`, `狀態`, `進度` are also recognized.
 
-After deploy, open `GET /api/tasks?debug=1` to see `sheetSync` diagnostics (why `source` is `memory_store` vs `google_sheet`) without exposing your env values.
+After deploy, open `GET /api/tasks?debug=1` to see `sheetSync` and `aiBridge` diagnostics (why `source` is `ai_bridge`, `google_sheet`, or `memory_store`) without exposing secret env values.
 
 Run desktop companion (Electron + Next):
 

@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 
+import { tryAiBridgeTasks } from "@/lib/ai-tasks-bridge";
 import { createTask, getAllTasks } from "@/lib/task-store";
 import { type DashboardTask, type TaskStatus, normalizeStatusProgress, nowIso } from "@/lib/task-model";
 
@@ -333,16 +334,34 @@ async function trySheetImport(): Promise<{ tasks: DashboardTask[] | null; diag: 
 
 export async function GET(request: Request) {
   const debug = new URL(request.url).searchParams.get("debug") === "1";
+
+  const aiResult = await tryAiBridgeTasks();
+  if (aiResult.tasks && aiResult.tasks.length > 0) {
+    const body: Record<string, unknown> = { tasks: aiResult.tasks, source: "ai_bridge" };
+    if (debug) {
+      body.aiBridge = aiResult.diag;
+      const sheet = await trySheetImport();
+      body.sheetSync = { ...sheet.diag, note: "skipped_when_AI_TASKS_URL_returns_tasks" };
+    }
+    return NextResponse.json(body);
+  }
+
   const { tasks: sheetTasks, diag } = await trySheetImport();
 
   if (sheetTasks) {
     const body: Record<string, unknown> = { tasks: sheetTasks, source: "google_sheet" };
-    if (debug) body.sheetSync = diag;
+    if (debug) {
+      body.sheetSync = diag;
+      body.aiBridge = aiResult.diag;
+    }
     return NextResponse.json(body);
   }
 
   const body: Record<string, unknown> = { tasks: getAllTasks(), source: "memory_store" };
-  if (debug) body.sheetSync = diag;
+  if (debug) {
+    body.sheetSync = diag;
+    body.aiBridge = aiResult.diag;
+  }
   return NextResponse.json(body);
 }
 
