@@ -12,6 +12,27 @@ Run web app:
 npm run dev
 ```
 
+### Optional: use Google Sheet as dashboard task source
+
+`GET /api/tasks` can read tasks directly from Google Sheet (when configured), then fall back to in-memory mock/webhook store.
+
+Set one of the following in `.env.local`:
+
+```bash
+# Option A: full spreadsheet URL (recommended)
+GOOGLE_SHEET_URL=https://docs.google.com/spreadsheets/d/<sheet-id>/edit?gid=0#gid=0
+GOOGLE_SHEET_GID=0
+
+# Option B: explicit gviz JSON endpoint
+# GOOGLE_SHEET_JSON_URL=https://docs.google.com/spreadsheets/d/<sheet-id>/gviz/tq?tqx=out:json&gid=0
+
+# Option C: only sheet id (+ gid)
+# GOOGLE_SHEET_ID=<sheet-id>
+# GOOGLE_SHEET_GID=0
+```
+
+Expected headers (flexible aliases supported): `title`, `description`, `aiToolName`, `status`, `progress`, `currentStage`, `externalTaskId`, `estimatedCompletion`, `log`.
+
 Run desktop companion (Electron + Next):
 
 ```bash

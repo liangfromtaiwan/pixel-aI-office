@@ -3,6 +3,18 @@ import { NextResponse } from "next/server";
 import type { TaskStatus, WebhookUpdatePayload } from "@/lib/task-model";
 import { applyWebhookUpdate } from "@/lib/task-store";
 
+/** Browsers open URLs with GET; webhook updates must use POST. */
+export async function GET() {
+  return NextResponse.json({
+    ok: false,
+    message:
+      "This URL is for webhooks only: send POST with Content-Type: application/json. Opening it in a tab uses GET, so nothing is updated.",
+    useMethod: "POST",
+    path: "/api/tasks/update",
+    seeTasks: "GET /api/tasks",
+  });
+}
+
 function isStatus(value: unknown): value is TaskStatus {
   return value === "not_started" || value === "in_progress" || value === "completed" || value === "blocked";
 }
