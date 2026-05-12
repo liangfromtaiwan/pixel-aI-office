@@ -24,6 +24,29 @@ function strField(v: unknown): string | null {
   return null;
 }
 
+/** Make may POST `{ "1": { ...sheet row } }` or `{ "row": { ... } }`. */
+function flattenWebhookBody(raw: unknown): Record<string, unknown> | null {
+  if (!raw || typeof raw !== "object") return null;
+  const data = raw as Record<string, unknown>;
+  const nested = data.row ?? data.fields ?? data.bundle ?? data.sheet;
+  if (nested && typeof nested === "object") {
+    return { ...data, ...(nested as Record<string, unknown>) };
+  }
+  const m1 = data["1"];
+  if (m1 && typeof m1 === "object") {
+    return { ...(m1 as Record<string, unknown>) };
+  }
+  return data;
+}
+
+function readStr(data: Record<string, unknown>, ...keys: string[]): string | null {
+  for (const key of keys) {
+    const v = strField(data[key]);
+    if (v) return v;
+  }
+  return null;
+}
+
 function normalizeWebhookStatus(value: unknown): TaskStatus | null {
   if (typeof value === "number") {
     if (value === 100) return "completed";
@@ -45,26 +68,41 @@ function normalizeWebhookStatus(value: unknown): TaskStatus | null {
 }
 
 function parsePayload(raw: unknown): WebhookUpdatePayload | null {
-  if (!raw || typeof raw !== "object") return null;
-  const data = raw as Record<string, unknown>;
-  const externalTaskId = strField(data.externalTaskId);
-  const aiToolName = strField(data.aiToolName);
-  const title = strField(data.title);
-  const description = strField(data.description) ?? "";
-  const currentStage = strField(data.currentStage) ?? "—";
-  const status = normalizeWebhookStatus(data.status);
+  const data = flattenWebhookBody(raw);
+  if (!data) return null;
+
+  const externalTaskId = readStr(
+    data,
+    "externalTaskId",
+    "external_task_id",
+    "ID",
+    "id",
+    "taskId",
+    "task_id",
+    "外部id",
+    "任務id",
+  );
+  const aiToolName = readStr(data, "aiToolName", "ai_tool_name", "tool", "工具", "source", "agent", "模型");
+  const title = readStr(data, "title", "標題", "Title", "name", "task", "taskName", "任務");
+  const description = readStr(data, "description", "desc", "描述", "說明", "summary", "內容") ?? "";
+  const currentStage = readStr(data, "currentStage", "current_stage", "stage", "目前階段", "step", "階段") ?? "—";
+  const status = normalizeWebhookStatus(data.status ?? data["狀態"] ?? data.state);
 
   let progress = 0;
-  if (typeof data.progress === "number" && Number.isFinite(data.progress)) {
-    progress = data.progress;
-  } else if (typeof data.progress === "string") {
-    const n = Number(data.progress.trim());
+  const pRaw = data.progress ?? data["進度"];
+  if (typeof pRaw === "number" && Number.isFinite(pRaw)) {
+    progress = pRaw;
+  } else if (typeof pRaw === "string") {
+    const n = Number(pRaw.trim());
     if (Number.isFinite(n)) progress = n;
   }
 
   if (!externalTaskId || !aiToolName || !title || !status) {
     return null;
   }
+
+  const log =
+    readStr(data, "log", "note", "message", "備註", "日誌", "remarks") ?? undefined;
 
   return {
     externalTaskId,
@@ -74,7 +112,7 @@ function parsePayload(raw: unknown): WebhookUpdatePayload | null {
     status,
     progress,
     currentStage: currentStage.length > 0 ? currentStage : "—",
-    log: typeof data.log === "string" && data.log.trim() ? data.log.trim() : undefined,
+    log,
   };
 }
 
@@ -91,7 +129,8 @@ export async function POST(request: Request) {
     return NextResponse.json(
       {
         error: "Invalid payload format",
-        hint: "Need non-empty strings: externalTaskId, aiToolName, title. Need status: not_started | in_progress | completed | blocked (or 進行中/已完成…). description optional (empty ok). currentStage optional (empty becomes —). progress optional number.",
+        hint:
+          "Need non-empty: externalTaskId (or ID), aiToolName (or 工具), title (or 標題), status (or 狀態). Optional: description/描述, currentStage/目前階段, log/備註, progress/進度. You may wrap the sheet row as { \"1\": { ... } } or { \"row\": { ... } }. If all values are empty, Make did not resolve {{1.*}} — use the field picker on the Sheets bundle, or fix module order.",
       },
       { status: 400 },
     );

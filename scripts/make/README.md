@@ -72,9 +72,19 @@ Important mapping rules:
 - Router by `aiToolName`
 - One HTTP step posting to dashboard
 
-## 6) Production-ish Notes (still local-first)
+## 7) Troubleshooting: Make shows empty strings in HTTP INPUT
 
-- Tunnel URL changes when restarted (unless paid/static domain)
-- If URL changed, update the Make HTTP module URL
-- Add a webhook secret header later if needed
+If the HTTP module INPUT body is all `""`, Make did **not** resolve `{{1.*}}` (wrong field name, wrong module number, or Sheets returned no bundle).
+
+Fix:
+
+1. Click the **Google Sheets** bubble → open **Bundle 1** → copy the **exact** property names shown.
+2. In HTTP body, **delete hand-typed `{{...}}`** and re-insert each value using the **field picker** (click the input → map from module 1).
+3. Or send the whole row object (supported by the app): set body to a JSON object whose keys match your sheet headers, e.g. `ID`, `標題`, `工具`, … with values picked from the Sheets module.
+
+The deployed webhook also accepts **Chinese header keys** as top-level JSON keys (`標題`, `ID`, `工具`, `描述`, `狀態`, `目前階段`, `備註`) and optional wrappers `{ "1": { ... } }` or `{ "row": { ... } }`.
+
+Production URL example:
+
+- `https://pixel-a-i-office.vercel.app/api/tasks/update`
 
